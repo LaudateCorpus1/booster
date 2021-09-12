@@ -1,19 +1,11 @@
-trap 'kill_swtpm; sudo umount $dir; rm -r $dir; sudo cryptsetup close $LUKS_DEV_NAME; sudo losetup -d $lodev' EXIT
+trap 'swtpm_ioctl --tcp :2322 -s; sudo umount $dir; rm -r $dir; sudo cryptsetup close $LUKS_DEV_NAME; sudo losetup -d $lodev' EXIT
 trap 'rm $OUTPUT' ERR
-
-kill_swtpm() {
-  if [ ! -z "$SWTPM_PID" ]
-  then
-      kill $SWTPM_PID
-  fi
-}
 
 LUKS_TYPE=luks${LUKS_VERSION}
 LUKS_DEV_NAME=luks-$LUKS_UUID
 
 if [ "$CLEVIS_PIN" == "tpm2" ]; then
   swtpm socket --tpmstate dir=assets/tpm2 --tpm2 --server type=tcp,port=2321 --ctrl type=tcp,port=2322 --flags not-need-init,startup-clear &
-  SWTPM_PID=$!
 fi
 
 truncate --size 40M $OUTPUT
