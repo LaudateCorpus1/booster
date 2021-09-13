@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -126,21 +128,96 @@ func recoverSystemdFido2Password(t luks.Token) ([]byte, error) {
 		challenge.WriteString(node.Credential)
 		challenge.WriteRune('\n')
 		challenge.WriteString(node.Salt)
+		challenge.WriteRune('\n')
 
-		var outBuffer, errBuffer bytes.Buffer
-		cmd := exec.Command("fido2-assert", "-G", "-h", "/dev/"+devName)
-		cmd.Stdin = strings.NewReader(challenge.String())
-		cmd.Stdout = &outBuffer
-		cmd.Stderr = &errBuffer
-		if err := cmd.Run(); err != nil {
-			debug("%v: %v", err, errBuffer.String())
+		device := "/dev/" + devName
+		args := []string{"-G", "-h", device}
+		if node.UserPresenceRequired {
+			args = append(args, "-t", "up=true")
+		}
+		if node.UserVerificationRequired {
+			args = append(args, "-t", "uv=true")
+		}
+		if node.PinRequired {
+			args = append(args, "-t", "pin=true")
+		}
+
+		cmd := exec.Command("fido2-assert", args...)
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			debug("%v", err)
+			continue
+		}
+		stdoutReader := bufio.NewReader(stdout)
+
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			debug("%v", err)
 			continue
 		}
 
-		output := outBuffer.String()
-		output = strings.TrimRight(output, "\n")
-		idx := strings.LastIndexByte(output, '\n') + 1
-		hmac := output[idx:] // base64-encoded hmac string is used as a passphrase for systemd encrypted partitions
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			debug("%v", err)
+			continue
+		}
+
+		if err := cmd.Start(); err != nil {
+			debug("%v", err)
+			continue
+		}
+
+		if _, err := stdin.Write([]byte(challenge.String())); err != nil {
+			debug("%v", err)
+			continue
+		}
+
+		if node.PinRequired {
+			// wait till the command requests the pin
+			buff := make([]byte, 500)
+			if _, err := stderr.Read(buff); err != nil {
+				debug("%v", err)
+				continue
+			}
+			// Dealing with Yubikey using command-line tools is getting out of control
+			// TODO: find a way to do the same using libfido2
+			prompt := "Enter PIN for " + device + ":"
+			if strings.HasPrefix(string(buff), prompt) {
+				// fido2-assert tool requests for PIN
+				fmt.Print(prompt)
+				pin, err := readPassword()
+				if err != nil {
+					debug("%v", err)
+					continue
+				}
+				pin = append(pin, '\n')
+				if _, err := stdin.Write(pin); err != nil {
+					debug("%v", err)
+					continue
+				}
+			}
+		}
+
+		// hmac is the 5th element in output, skip 4 first lines
+		var hmac string
+		for i := 0; i < 4; i++ {
+			_, _ = stdoutReader.ReadString('\n')
+		}
+		hmac, err = stdoutReader.ReadString('\n')
+		if err != nil {
+			if err != io.EOF {
+				debug("%v", err)
+			}
+			continue
+		}
+
+		hmac = strings.TrimRight(hmac, "\n")
+		if err := cmd.Wait(); err != nil {
+			buff := make([]byte, 500)
+			_, _ = io.ReadFull(stderr, buff)
+			debug("%v: %v", err, string(buff))
+			continue
+		}
 		return []byte(hmac), nil
 	}
 

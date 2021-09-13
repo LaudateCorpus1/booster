@@ -2,13 +2,15 @@ trap 'sudo umount $dir; rm cryptenroll.passphrase; rm -r $dir; sudo cryptsetup c
 trap 'rm $OUTPUT' ERR
 
 LUKS_DEV_NAME=luks-booster-systemd
+FIDO2_PIN=1111 # use yubikey-manager-qt to setup FIDO2 pin value to 1111
 
 truncate --size 40M $OUTPUT
 lodev=$(sudo losetup -f --show $OUTPUT)
 sudo cryptsetup luksFormat --uuid $LUKS_UUID --type luks2 $lodev <<<"$LUKS_PASSWORD"
 
 echo -n "$LUKS_PASSWORD" >cryptenroll.passphrase
-sudo CREDENTIALS_DIRECTORY="$(pwd)" systemd-cryptenroll --fido2-device=auto --fido2-with-user-presence=no $lodev
+echo -n "$FIDO2_PIN" >fido2-pin
+sudo CREDENTIALS_DIRECTORY="$(pwd)" systemd-cryptenroll --fido2-device=auto --fido2-with-client-pin=yes $lodev <<<"1111"
 
 sudo cryptsetup open --type luks2 $lodev $LUKS_DEV_NAME <<<"$LUKS_PASSWORD"
 sudo mkfs.ext4 -U $FS_UUID -L atestlabel12 /dev/mapper/$LUKS_DEV_NAME

@@ -773,6 +773,12 @@ func TestBooster(t *testing.T) {
 			kernelArgs: []string{"rd.luks.uuid=b12cbfef-da87-429f-ac96-7dda7232c189", "root=UUID=bb351f0d-07f2-4fe4-bc53-d6ae39fa1c23"},
 			params:     []string{"-usb", "-device", "usb-host,hostbus=" + yubikey.bus + ",hostaddr=" + yubikey.device},
 			extraFiles: "fido2-assert",
+			checkVMState: func(vm *vmtest.Qemu, t *testing.T) {
+				pin := "1111"
+				require.NoError(t, vm.ConsoleExpect("Enter PIN for /dev/hidraw1:"))
+				require.NoError(t, vm.ConsoleWrite(pin+"\n"))
+
+			},
 		}))
 	}
 	t.Run("Systemd.TPM2", boosterTest(Opts{
