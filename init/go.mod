@@ -16,8 +16,8 @@ require (
 	github.com/vishvananda/netlink v1.1.0
 	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f // indirect
 	github.com/yookoala/realpath v1.0.0
-	golang.org/x/net v0.0.0-20210907225631-ff17edfbf26d // indirect
-	golang.org/x/sys v0.0.0-20210906170528-6f6e22806c34
+	golang.org/x/net v0.7.0 // indirect
+	golang.org/x/sys v0.5.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
 
